@@ -8,9 +8,12 @@
 """
 from typing import Any
 
+import re
+
 from app.core.exceptions import BizException
 from app.db.repository import db
 from app.services.base import today
+from app.services.schedule import ScheduleService
 
 ASSIGNMENT_STATUSES = ("进行中", "已结束")
 ATTENDANCE_STATUSES = ("出勤", "迟到", "请假", "缺勤")
@@ -322,7 +325,55 @@ class AttendanceService:
                     "createdAt": ts,
                     "updatedAt": ts,
                 })
+        # 考勤保存后，对应课次标记为已完成（课表与考勤联动）
+        ScheduleService().mark_completed(class_id, date)
         return self.roster(teacher_code, class_id, date)
+
+    def class_summary(self, teacher_code: str, class_id: str, month: str | None = None) -> dict[str, Any]:
+        """班级考勤统计：按学员汇总出勤 / 迟到 / 请假 / 缺勤与出勤率。"""
+        cls = _teacher_class(teacher_code, class_id)
+        if month and not re.fullmatch(r"\d{4}-\d{2}", month):
+            raise BizException(400, "月份格式应为 YYYY-MM")
+        students = sorted(_class_students(class_id), key=lambda s: s.get("id") or "")
+        records = [
+            a for a in db.alive("attendance")
+            if a.get("classId") == class_id and (not month or (a.get("date") or "").startswith(month))
+        ]
+        totals = {status: 0 for status in ATTENDANCE_STATUSES}
+        buckets: dict[str, dict[str, int]] = {
+            s["id"]: {status: 0 for status in ATTENDANCE_STATUSES} for s in students
+        }
+        for row in records:
+            sid = row.get("studentId")
+            if sid in buckets and row.get("status") in buckets[sid]:
+                buckets[sid][row["status"]] += 1
+                totals[row["status"]] += 1
+        rows = []
+        for stu in students:
+            counts = buckets[stu["id"]]
+            total = sum(counts.values())
+            attended = counts["出勤"] + counts["迟到"]
+            rows.append({
+                "studentId": stu["id"],
+                "studentName": stu.get("name"),
+                "grade": stu.get("grade"),
+                **counts,
+                "total": total,
+                "rate": round(attended / total * 100) if total else 0,
+            })
+        total_all = sum(totals.values())
+        attended_all = totals["出勤"] + totals["迟到"]
+        return {
+            "classId": class_id,
+            "className": cls.get("name"),
+            "month": month or "",
+            "students": rows,
+            "totals": {
+                **totals,
+                "total": total_all,
+                "rate": round(attended_all / total_all * 100) if total_all else 0,
+            },
+        }
 
     # ---------- 学员 ----------
 

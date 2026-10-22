@@ -10,6 +10,7 @@ from app.api import (
     payments,
     portal,
     resources,
+    schedule,
     settings,
     students,
     teachers,
@@ -31,6 +32,7 @@ for module_router in (
     resources.router,
     dashboard.router,
     portal.router,
+    schedule.router,
     teaching.router,
     settings.router,
 ):

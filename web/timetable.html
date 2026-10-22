@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课表 - 启航编程管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+      <main class="content">
+        <div id="tt-page-head"></div>
+
+        <div class="card reveal" data-d="1">
+          <div class="card-body">
+            <div class="toolbar" style="padding:0 0 14px">
+              <button class="btn btn-outline btn-sm" id="tt-prev">上一周</button>
+              <button class="btn btn-outline btn-sm" id="tt-today">本周</button>
+              <button class="btn btn-outline btn-sm" id="tt-next">下一周</button>
+              <span class="tt-range" id="tt-range"></span>
+              <div class="toolbar-spacer"></div>
+              <select class="select" id="tt-class" style="width:190px"></select>
+              <select class="select" id="tt-teacher" style="width:160px"></select>
+              <button class="btn btn-sm" id="tt-generate">补齐课表</button>
+            </div>
+            <div class="tt-week" id="tt-week"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal" id="tt-modal">
+    <div class="modal-mask" data-close></div>
+    <div class="modal-box modal-lg">
+      <div class="modal-head">
+        <h3 id="ttm-title">课次</h3>
+        <button class="modal-x" data-close><span data-icon="x"></span></button>
+      </div>
+      <div class="modal-body" id="ttm-body"></div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>取 消</button>
+        <button class="btn" id="ttm-submit">保 存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/timetable.js"></script>
+</body>
+</html>

@@ -257,3 +257,23 @@ class Attendance(Base):
     __table_args__ = (
         UniqueConstraint("classId", "studentId", "date", name="uk_attendance_class_student_date"),
     )
+
+
+class ClassSession(Base):
+    """课次（课表条目）：由班级的周排课规则自动生成，也可单独调整。"""
+    __tablename__ = "class_sessions"
+    id = Column(String(16), primary_key=True)  # 课次编号 SK001
+    classId = Column(String(16), nullable=False, index=True)
+    teacherId = Column(String(16), nullable=False, index=True)
+    date = Column(String(32), nullable=False, index=True)
+    startTime = Column(String(8), nullable=False)   # HH:MM
+    endTime = Column(String(8), nullable=False)     # HH:MM
+    classroom = Column(String(32), nullable=True)
+    topic = Column(String(128), nullable=True)
+    status = Column(String(16), nullable=False, default="待上课")  # 待上课/已完成/已取消
+    createdAt = Column(String(32), nullable=True)
+    updatedAt = Column(String(32), nullable=True)
+    deletedAt = Column(String(32), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("classId", "date", "startTime", name="uk_session_class_date_start"),
+    )

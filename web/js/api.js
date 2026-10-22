@@ -208,6 +208,32 @@ const api = {
     return request('GET', '/portal/parent/attendance' + qs({ studentId }));
   },
 
+  /* 课表（员工 / 教师 / 学员 / 家长） */
+  sessions(start, end, classId, teacherId) {
+    return request('GET', '/sessions' + qs({ start, end, classId, teacherId }));
+  },
+  generateSessions(classId, fromDate) {
+    return request('POST', '/sessions/generate', { classId, fromDate });
+  },
+  updateSession(id, data) {
+    return request('PUT', '/sessions/' + encodeURIComponent(id), data);
+  },
+  teacherSessions(start, end) {
+    return request('GET', '/portal/teacher/sessions' + qs({ start, end }));
+  },
+  updateTeacherSession(id, data) {
+    return request('PUT', '/portal/teacher/sessions/' + encodeURIComponent(id), data);
+  },
+  studentSessions(start, end) {
+    return request('GET', '/portal/student/sessions' + qs({ start, end }));
+  },
+  parentSessions(studentId, start, end) {
+    return request('GET', '/portal/parent/sessions' + qs({ studentId, start, end }));
+  },
+  teacherAttendanceSummary(classId, month) {
+    return request('GET', '/portal/teacher/attendance/summary' + qs({ classId, month }));
+  },
+
   /* 系统设置 */
   settingsGet() {
     return request('GET', '/settings');

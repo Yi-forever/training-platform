@@ -261,6 +261,22 @@ class AttendanceSave(CamelModel):
     items: list[AttendanceItem] = []
 
 
+# ---------- 课表 ----------
+
+class SessionGenerate(CamelModel):
+    class_id: str
+    from_date: str | None = None
+
+
+class SessionUpdate(CamelModel):
+    topic: str | None = Field(default=None, max_length=128)
+    status: str | None = None
+    date: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    classroom: str | None = Field(default=None, max_length=32)
+
+
 # ---------- 系统设置 ----------
 
 class SettingsUpdate(CamelModel):

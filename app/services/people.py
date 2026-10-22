@@ -7,6 +7,7 @@ from app.core.security import create_token, hash_password, verify_password
 from app.db.repository import db
 from app.core.config import ROLE_ADMIN
 from app.services.base import CrudService, today
+from app.services.schedule import ScheduleService
 from app.services.teaching import TeachingStatsService
 
 
@@ -79,7 +80,8 @@ class AccountContextService:
             })
             total_students += len(students)
         return {"teacherId": code, "classes": enriched, "classCount": len(enriched),
-                "studentCount": total_students, **TeachingStatsService().teacher(code or "")}
+                "studentCount": total_students, **TeachingStatsService().teacher(code or ""),
+                "nextSession": ScheduleService().next_session([c["id"] for c in classes])}
 
     def _student(self, user: dict) -> dict[str, Any]:
         code = user.get("refId")
@@ -100,6 +102,7 @@ class AccountContextService:
             "schedule": cls.get("schedule") if cls else "",
             "paidTotal": round(paid, 2), "paymentCount": len(payments),
             **TeachingStatsService().student(code or ""),
+            "nextSession": ScheduleService().next_session([stu.get("classId") or ""]),
         }
 
     def _parent(self, user: dict) -> dict[str, Any]:
@@ -117,7 +120,8 @@ class AccountContextService:
                 "courseName": course["name"] if course else "",
                 "teacherName": teacher["name"] if teacher else "",
             })
-        return {"parentCode": code, "children": enriched, "childCount": len(enriched)}
+        return {"parentCode": code, "children": enriched, "childCount": len(enriched),
+                "nextSession": ScheduleService().next_session([c["classId"] for c in children if c.get("classId")])}
 
 
 class UserService(CrudService):

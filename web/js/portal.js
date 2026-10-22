@@ -16,7 +16,36 @@ let ASSIGNMENTS = [];
 let CHILDREN = [];
 let parentAssignments = [];
 let parentAttendance = [];
+let parentSessions = [];
 let parentChildFilter = '';
+let parentTtFilter = '';
+
+/* ---------- 日期工具 ---------- */
+
+function fmtDateLocal(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function portalRange(days = 14) {
+  const start = new Date();
+  const end = new Date();
+  end.setDate(end.getDate() + days);
+  return [fmtDateLocal(start), fmtDateLocal(end)];
+}
+
+function attSummaryChips(records) {
+  const counts = { 出勤: 0, 迟到: 0, 请假: 0, 缺勤: 0 };
+  records.forEach(r => { if (counts[r.status] !== undefined) counts[r.status] += 1; });
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const rate = total ? Math.round((counts['出勤'] + counts['迟到']) / total * 100) : 0;
+  return `<div class="att-summary">
+    <span class="att-chip">出勤 <b>${counts['出勤']}</b></span>
+    <span class="att-chip">迟到 <b>${counts['迟到']}</b></span>
+    <span class="att-chip">请假 <b>${counts['请假']}</b></span>
+    <span class="att-chip">缺勤 <b>${counts['缺勤']}</b></span>
+    <span class="att-chip">出勤率 <b>${rate}%</b></span>
+  </div>`;
+}
 
 /* ---------- 启动 ---------- */
 
@@ -69,20 +98,74 @@ function openPortalModal(title, bodyHtml, submitText, onSubmit) {
 
 async function initTeacher(el) {
   CLASSES = CTX.classes || [];
-  ASSIGNMENTS = await api.teacherAssignments();
+  const [assignments, sessions] = await Promise.all([
+    api.teacherAssignments(),
+    api.teacherSessions(...portalRange(14)),
+  ]);
+  ASSIGNMENTS = assignments;
   el.insertAdjacentHTML('beforeend', teacherStatsHtml());
   el.insertAdjacentHTML('beforeend', teacherClassesHtml());
+  el.insertAdjacentHTML('beforeend', teacherTimetableHtml(sessions));
   el.insertAdjacentHTML('beforeend', teacherAssignmentsHtml());
   el.insertAdjacentHTML('beforeend', teacherAttendanceHtml());
 
   $('#btn-new-assignment')?.addEventListener('click', () => openAssignmentEditor(null));
   $('#assignment-list')?.addEventListener('click', onAssignmentAction);
+  $('#teacher-timetable')?.addEventListener('click', onTeacherSessionAction);
+  $('#btn-att-summary')?.addEventListener('click', openAttendanceSummary);
   $('#att-class')?.addEventListener('change', loadAttendance);
   $('#att-date')?.addEventListener('change', loadAttendance);
   $('#att-load')?.addEventListener('click', loadAttendance);
   $('#att-save')?.addEventListener('click', saveAttendance);
 
+  // 默认定位到最近一次课次，避免打开时落在没有课的日期上
+  if (sessions.length) {
+    const next = sessions.find(s => s.status !== '已取消') || sessions[0];
+    const classSelect = $('#att-class');
+    const dateInput = $('#att-date');
+    if (classSelect) classSelect.value = next.classId;
+    if (dateInput) dateInput.value = next.date;
+  }
   if (CLASSES.length) await loadAttendance();
+}
+
+function teacherTimetableHtml(sessions) {
+  const rows = sessions.slice(0, 12).map(s => `
+    <tr>
+      <td class="td-sub" style="white-space:nowrap">${esc(s.date)}</td>
+      <td style="white-space:nowrap">${esc(s.startTime)}-${esc(s.endTime)}</td>
+      <td>${esc(s.className)}</td>
+      <td>${esc(s.topic || '—')}</td>
+      <td>${badge(s.displayStatus)}${s.attendanceSaved ? ' <span class="td-sub">已考勤</span>' : ''}</td>
+      <td class="td-actions">
+        <button class="btn-link" data-att-class="${s.classId}" data-att-date="${s.date}">${ICONS.check}考勤</button>
+      </td>
+    </tr>`).join('') || emptyRow(6, '近两周暂无课次');
+  return `
+    <div class="card reveal" data-d="2" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.calendar} 我的课表</div>
+        <div class="td-sub">近两周</div>
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>日期</th><th>时间</th><th>班级</th><th>授课主题</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="teacher-timetable">${rows}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function onTeacherSessionAction(e) {
+  const btn = e.target.closest('button[data-att-class]');
+  if (!btn) return;
+  const classId = btn.dataset.attClass;
+  const date = btn.dataset.attDate;
+  const classSelect = $('#att-class');
+  const dateInput = $('#att-date');
+  if (!classSelect || !dateInput) return;
+  classSelect.value = classId;
+  dateInput.value = date;
+  loadAttendance();
+  $('#att-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function teacherStatsHtml() {
@@ -301,8 +384,11 @@ function openGradeForm(a, row) {
 function teacherAttendanceHtml() {
   const options = CLASSES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
   return `
-    <div class="card reveal" data-d="4" style="margin-top:16px;margin-bottom:20px">
-      <div class="card-head"><div class="card-title">${ICONS.clock} 考勤管理</div></div>
+    <div class="card reveal" data-d="4" id="att-card" style="margin-top:16px;margin-bottom:20px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.clock} 考勤管理</div>
+        <button class="btn btn-outline btn-sm" id="btn-att-summary">${ICONS.chart} 本月统计</button>
+      </div>
       <div class="card-body">
         <div class="toolbar" style="padding:0 0 12px">
           <select class="select" id="att-class" style="width:230px" ${CLASSES.length ? '' : 'disabled'}>
@@ -360,23 +446,81 @@ async function saveAttendance() {
   await loadAttendance();
 }
 
+async function openAttendanceSummary() {
+  const classId = $('#att-class')?.value;
+  if (!classId) { showToast('请先选择班级', 'error'); return; }
+  const month = ($('#att-date')?.value || todayStr()).slice(0, 7);
+  const body = `
+    <div class="toolbar" style="padding:0 0 12px">
+      <span class="td-sub">统计月份</span>
+      <input class="input" type="month" id="as-month" value="${month}" style="width:160px">
+      <div class="toolbar-spacer"></div>
+      <span class="td-sub" id="as-total"></span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>学号</th><th>学员</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th></tr></thead>
+      <tbody id="as-body"><tr><td colspan="7" class="table-empty">加载中…</td></tr></tbody>
+    </table></div>`;
+  openPortalModal('班级考勤统计', body, '', async () => true);
+  const load = async () => {
+    const m = $('#as-month').value;
+    const data = await apiOk(() => api.teacherAttendanceSummary(classId, m), '');
+    if (!data) return;
+    $('#as-total').textContent = `合计 ${data.totals.total} 次 · 出勤率 ${data.totals.rate}%`;
+    $('#as-body').innerHTML = data.students.map(s => `
+      <tr>
+        <td class="td-sub">${esc(s.studentId)}</td>
+        <td>${esc(s.studentName)}</td>
+        <td>${s['出勤']}</td><td>${s['迟到']}</td><td>${s['请假']}</td><td>${s['缺勤']}</td>
+        <td><b style="color:${s.rate >= 80 ? 'var(--success)' : 'var(--warning)'}">${s.rate}%</b></td>
+      </tr>`).join('') || emptyRow(7, '本月暂无考勤记录');
+  };
+  $('#as-month')?.addEventListener('change', load);
+  await load();
+}
+
 /* ============================================================
  * 学员
  * ============================================================ */
 
 async function initStudent(el) {
-  const [assignments, attendance] = await Promise.all([
+  const [assignments, attendance, sessions] = await Promise.all([
     api.studentAssignments(),
     api.studentAttendance(),
+    api.studentSessions(...portalRange(14)),
   ]);
   el.insertAdjacentHTML('beforeend', studentStatsHtml());
   el.insertAdjacentHTML('beforeend', studentInfoHtml());
+  el.insertAdjacentHTML('beforeend', studentTimetableHtml(sessions));
   el.insertAdjacentHTML('beforeend', `<div id="student-pay" style="margin-top:16px">${payLoadingCard('缴费明细')}</div>`);
   el.insertAdjacentHTML('beforeend', studentAssignmentsHtml(assignments));
   el.insertAdjacentHTML('beforeend', studentAttendanceHtml(attendance));
   $('#student-assignments')?.addEventListener('click', onStudentAssignmentAction);
   window.__studentAssignments = assignments;
   await loadStudentPayments();
+}
+
+function studentTimetableHtml(sessions) {
+  const rows = sessions.slice(0, 12).map(s => `
+    <tr>
+      <td class="td-sub" style="white-space:nowrap">${esc(s.date)}</td>
+      <td style="white-space:nowrap">${esc(s.startTime)}-${esc(s.endTime)}</td>
+      <td>${esc(s.className)}</td>
+      <td>${esc(s.topic || '—')}</td>
+      <td>${esc(s.teacherName || '—')}</td>
+      <td>${badge(s.displayStatus)}</td>
+    </tr>`).join('') || emptyRow(6, '近两周暂无课次');
+  return `
+    <div class="card reveal" data-d="3" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.calendar} 我的课表</div>
+        <div class="td-sub">近两周</div>
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>日期</th><th>时间</th><th>班级</th><th>授课主题</th><th>教师</th><th>状态</th></tr></thead>
+        <tbody id="student-timetable">${rows}</tbody>
+      </table></div></div>
+    </div>`;
 }
 
 function studentStatsHtml() {
@@ -505,10 +649,13 @@ function studentAttendanceHtml(records) {
   return `
     <div class="card reveal" data-d="4" style="margin-top:16px;margin-bottom:20px">
       <div class="card-head"><div class="card-title">${ICONS.clock} 我的考勤</div></div>
-      <div class="card-body"><div class="table-wrap"><table>
-        <thead><tr><th>日期</th><th>班级</th><th>考勤状态</th><th>备注</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div></div>
+      <div class="card-body">
+        ${attSummaryChips(records)}
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>日期</th><th>班级</th><th>考勤状态</th><th>备注</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>
     </div>`;
 }
 
@@ -540,15 +687,21 @@ async function loadStudentPayments() {
 
 async function initParent(el) {
   CHILDREN = CTX.children || [];
-  [parentAssignments, parentAttendance] = await Promise.all([
+  [parentAssignments, parentAttendance, parentSessions] = await Promise.all([
     api.parentAssignments(),
     api.parentAttendance(),
+    api.parentSessions(null, ...portalRange(14)),
   ]);
   el.insertAdjacentHTML('beforeend', parentStatsHtml());
   el.insertAdjacentHTML('beforeend', parentChildrenHtml());
   el.insertAdjacentHTML('beforeend', parentPaymentsHtml());
+  el.insertAdjacentHTML('beforeend', parentTimetableHtml());
   el.insertAdjacentHTML('beforeend', parentAssignmentsHtml());
   el.insertAdjacentHTML('beforeend', parentAttendanceHtml());
+  $('#parent-tt-filter')?.addEventListener('change', e => {
+    parentTtFilter = e.target.value;
+    renderParentTimetable();
+  });
   $('#parent-assign-filter')?.addEventListener('change', e => {
     parentChildFilter = e.target.value;
     renderParentAssignments();
@@ -558,6 +711,40 @@ async function initParent(el) {
     renderParentAttendance();
   });
   initParentPayments();
+}
+
+function parentTimetableHtml() {
+  return `
+    <div class="card reveal" data-d="2" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.calendar} 孩子课表</div>
+        ${childFilterHtml('parent-tt-filter')}
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>学员</th><th>日期</th><th>时间</th><th>班级</th><th>授课主题</th><th>状态</th></tr></thead>
+        <tbody id="parent-timetable">${parentTimetableRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function parentTimetableRows() {
+  const list = parentTtFilter
+    ? parentSessions.filter(s => s.studentId === parentTtFilter)
+    : parentSessions;
+  return list.slice(0, 16).map(s => `
+    <tr>
+      <td>${esc(s.studentName)}</td>
+      <td class="td-sub" style="white-space:nowrap">${esc(s.date)}</td>
+      <td style="white-space:nowrap">${esc(s.startTime)}-${esc(s.endTime)}</td>
+      <td>${esc(s.className)}</td>
+      <td>${esc(s.topic || '—')}</td>
+      <td>${badge(s.displayStatus)}</td>
+    </tr>`).join('') || emptyRow(6, '近两周暂无课次');
+}
+
+function renderParentTimetable() {
+  const tbody = $('#parent-timetable');
+  if (tbody) tbody.innerHTML = parentTimetableRows();
 }
 
 function parentStatsHtml() {
@@ -642,18 +829,24 @@ function parentAttendanceHtml() {
         <div class="card-title">${ICONS.clock} 考勤情况</div>
         ${childFilterHtml('parent-att-filter')}
       </div>
-      <div class="card-body"><div class="table-wrap"><table>
-        <thead><tr><th>学员</th><th>日期</th><th>班级</th><th>考勤状态</th><th>备注</th></tr></thead>
-        <tbody id="parent-attendance">${parentAttendanceRows()}</tbody>
-      </table></div></div>
+      <div class="card-body">
+        <div id="parent-att-summary">${attSummaryChips(parentAttendanceList())}</div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>学员</th><th>日期</th><th>班级</th><th>考勤状态</th><th>备注</th></tr></thead>
+          <tbody id="parent-attendance">${parentAttendanceRows()}</tbody>
+        </table></div>
+      </div>
     </div>`;
 }
 
-function parentAttendanceRows() {
-  const list = parentChildFilter
+function parentAttendanceList() {
+  return parentChildFilter
     ? parentAttendance.filter(a => a.studentId === parentChildFilter)
     : parentAttendance;
-  return list.map(a => `
+}
+
+function parentAttendanceRows() {
+  return parentAttendanceList().map(a => `
     <tr>
       <td>${esc(a.studentName)}</td>
       <td class="td-sub" style="white-space:nowrap">${esc(a.date || '–')}</td>
@@ -666,6 +859,8 @@ function parentAttendanceRows() {
 function renderParentAttendance() {
   const tbody = $('#parent-attendance');
   if (tbody) tbody.innerHTML = parentAttendanceRows();
+  const summary = $('#parent-att-summary');
+  if (summary) summary.innerHTML = attSummaryChips(parentAttendanceList());
 }
 
 /* ---------- 家长 / 学员：缴费明细组件 ---------- */

@@ -122,4 +122,7 @@ class SettingsService:
     def reset(self) -> dict:
         """一键重置演示数据（仅管理员入口调用）：全部集合回到种子状态。"""
         data = db.reset()
+        # 种子只包含班级排课规则，课次需按规则重新展开
+        from app.services.schedule import ScheduleService
+        ScheduleService().ensure_all()
         return {"org": data["org"], "settings": data["settings"]}

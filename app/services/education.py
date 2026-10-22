@@ -4,6 +4,7 @@ from typing import Any
 from app.core.exceptions import BizException
 from app.db.repository import db
 from app.services.base import CrudService, today
+from app.services.schedule import ScheduleService
 
 
 class CourseService(CrudService):
@@ -54,7 +55,13 @@ class ClassService(CrudService):
         data.setdefault("startDate", None)
         if not data.get("startDate"):
             data["startDate"] = today()
-        return super().create(data)
+        record = super().create(data)
+        # 按周排课规则自动生成课表；解析失败不影响开班（可在课表页手动处理）
+        try:
+            ScheduleService().generate_for_class(record["id"])
+        except BizException:
+            pass
+        return record
 
     def update(self, code: str, data: dict[str, Any]) -> dict:
         if data.get("courseId"):
@@ -65,7 +72,12 @@ class ClassService(CrudService):
             teacher = db.locate("teachers", data["teacherId"], label="教师")
             if teacher.get("status") != "在职":
                 raise BizException(409, f"教师「{teacher['name']}」已离职，无法任教")
-        return super().update(code, data)
+        before = db.locate("classes", code, label="班级")
+        record = super().update(code, data)
+        schedule_fields = ("schedule", "startDate", "endDate", "classroom", "teacherId")
+        if any(field in data and data[field] != before.get(field) for field in schedule_fields):
+            ScheduleService().sync_for_class(code)
+        return record
 
     def _before_delete(self, code: str) -> None:
         students = [s for s in db.alive("students") if s.get("classId") == code]

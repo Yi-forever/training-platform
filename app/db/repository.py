@@ -25,6 +25,7 @@ from app.db.models import (
     Attendance,
     Bill,
     Class,
+    ClassSession,
     Config,
     Course,
     News,
@@ -51,6 +52,7 @@ MODELS: dict[str, type] = {
     "assignments": Assignment,
     "submissions": Submission,
     "attendance": Attendance,
+    "sessions": ClassSession,
 }
 PK_OF = {name: ("username" if name == "users" else "id") for name in MODELS}
 
