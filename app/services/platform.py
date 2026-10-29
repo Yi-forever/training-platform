@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import NEW_STUDENT_STATUS_OPTIONS
 from app.core.exceptions import BizException
 from app.db.repository import db
+from app.services.enrollment import enrolled_count
 
 
 class DashboardService:
@@ -48,7 +49,7 @@ class DashboardService:
         for c in db.alive("classes"):
             if c.get("status") != "进行中":
                 continue
-            enrolled = sum(1 for s in db.alive("students") if s.get("classId") == c["id"])
+            enrolled = enrolled_count(c["id"])
             course = db.find("courses", c.get("courseId") or "")
             rows.append({
                 "id": c["id"],
@@ -68,7 +69,7 @@ class DashboardService:
         for c in rows[:limit]:
             course = db.find("courses", c.get("courseId") or "")
             teacher = db.find("teachers", c.get("teacherId") or "")
-            enrolled = sum(1 for s in db.alive("students") if s.get("classId") == c["id"])
+            enrolled = enrolled_count(c["id"])
             result.append({
                 "id": c["id"],
                 "name": c["name"],

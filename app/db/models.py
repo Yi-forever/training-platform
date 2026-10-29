@@ -82,7 +82,36 @@ class Course(Base):
     price = Column(Numeric(12, 2), nullable=False, default=0)
     target = Column(String(128), nullable=True)
     desc = Column(Text, nullable=True)
+    teacherId = Column(String(16), nullable=True)   # 负责 / 默认授课教师（开班时带出）
     status = Column(String(8), nullable=False, default="在售")
+    createdAt = Column(String(32), nullable=True)
+    updatedAt = Column(String(32), nullable=True)
+    deletedAt = Column(String(32), nullable=True)
+
+
+class CourseProposal(Base):
+    """教师开课申请：教师提出新课，教务 / 超管审核通过后自动创建课程。
+
+    - ``status``：待审核 / 已通过 / 已驳回 / 已撤回；
+    - 审核通过时写入 ``courseId``，课程负责人默认为申请教师；
+    - 同一教师可提交多条申请，不做唯一约束（同名课程可能在不同学期开设）。
+    """
+    __tablename__ = "course_proposals"
+    id = Column(String(16), primary_key=True)        # 申请编号 KK001
+    teacherId = Column(String(16), nullable=False, index=True)
+    name = Column(String(128), nullable=False)
+    category = Column(String(32), nullable=False)
+    level = Column(String(16), nullable=False, default="入门")
+    hours = Column(Integer, nullable=False, default=0)
+    price = Column(Numeric(12, 2), nullable=False, default=0)
+    target = Column(String(128), nullable=True)
+    desc = Column(Text, nullable=True)
+    preferredSchedule = Column(String(128), nullable=True)  # 意向上课时间
+    status = Column(String(16), nullable=False, default="待审核")
+    reviewNote = Column(String(256), nullable=True)
+    reviewedBy = Column(String(32), nullable=True)
+    reviewedAt = Column(String(32), nullable=True)
+    courseId = Column(String(16), nullable=True)      # 审核通过后生成的课程
     createdAt = Column(String(32), nullable=True)
     updatedAt = Column(String(32), nullable=True)
     deletedAt = Column(String(32), nullable=True)
@@ -322,3 +351,34 @@ class Attendance(Base):
     __table_args__ = (
         UniqueConstraint("classId", "studentId", "date", name="uk_attendance_class_student_date"),
     )
+
+
+
+
+class Enrollment(Base):
+    """选课（报名）记录：学员 / 家长自助选班，员工审核后正式入班。
+
+    - 一个学员可同时选多个班级（如同时报 Python 与机器人），``students.classId``
+      仅表示「主班」，完整归属以本表「已通过」记录为准；
+    - ``status``：待审核 / 已通过 / 已驳回 / 已退课 / 候补；
+    - 名额已满时进入候补并记录 ``waitlistNo``，退课释放名额后按顺位自动转正；
+    - 「学员 + 班级」唯一：被驳回或退课后重新申请会复用同一条记录，保留审核意见。
+    """
+    __tablename__ = "enrollments"
+    id = Column(String(16), primary_key=True)  # 选课编号 XK001
+    studentId = Column(String(16), nullable=False, index=True)
+    classId = Column(String(16), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default="待审核")
+    source = Column(String(16), nullable=False, default="学员")  # 学员 / 家长 / 员工
+    note = Column(String(256), nullable=True)          # 学员申请备注
+    reviewNote = Column(String(256), nullable=True)    # 审核意见
+    reviewedBy = Column(String(32), nullable=True)
+    reviewedAt = Column(String(32), nullable=True)
+    waitlistNo = Column(Integer, nullable=True)        # 候补顺位（1 为最前）
+    createdAt = Column(String(32), nullable=True)
+    updatedAt = Column(String(32), nullable=True)
+    deletedAt = Column(String(32), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("studentId", "classId", name="uk_enrollment_student_class"),
+    )
+

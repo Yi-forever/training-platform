@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-add').addEventListener('click', () => openEditor(null));
   $('#btn-submit').addEventListener('click', submitForm);
   $('#tbody').addEventListener('click', onTableClick);
+  // 选择课程后自动带出该课程的负责教师（仍可手动改）
+  $('#f-course').addEventListener('change', () => fillSelects($('#f-course').value));
 
   renderTable();
 });
@@ -33,7 +35,12 @@ function fillSelects(selectedCourse, selectedTeacher) {
   $('#f-course').innerHTML = courseOpts || '<option value="">暂无在售课程</option>';
   $('#f-teacher').innerHTML = teacherOpts || '<option value="">暂无在职教师</option>';
   if (selectedCourse) $('#f-course').value = selectedCourse;
-  if (selectedTeacher) $('#f-teacher').value = selectedTeacher;
+  if (selectedTeacher) {
+    $('#f-teacher').value = selectedTeacher;
+  } else {
+    const course = byId(DB.courses, $('#f-course').value);
+    if (course && course.teacherId) $('#f-teacher').value = course.teacherId;
+  }
 }
 
 /* ---------- 列表 ---------- */

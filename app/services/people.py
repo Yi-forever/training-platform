@@ -65,32 +65,38 @@ class AccountContextService:
         return base
 
     def _teacher(self, user: dict) -> dict[str, Any]:
+        from app.services.enrollment import enrolled_student_ids
+
         code = user.get("refId")
         classes = db.classes_of_teacher(code or "")
         enriched = []
         total_students = 0
         for c in classes:
-            students = [s for s in db.alive("students") if s.get("classId") == c["id"]]
+            count = len(enrolled_student_ids(c["id"]))
             course = db.find("courses", c.get("courseId") or "")
             enriched.append({
                 "id": c["id"], "name": c["name"],
                 "courseName": course["name"] if course else "",
                 "schedule": c.get("schedule"), "status": c.get("status"),
-                "enrolled": len(students),
+                "enrolled": count,
             })
-            total_students += len(students)
+            total_students += count
         return {"teacherId": code, "classes": enriched, "classCount": len(enriched),
                 "studentCount": total_students, **TeachingStatsService().teacher(code or ""),
                 "nextSession": ScheduleService().next_session([c["id"] for c in classes])}
 
     def _student(self, user: dict) -> dict[str, Any]:
+        from app.services.enrollment import enrolled_class_ids
+
         code = user.get("refId")
         stu = db.find("students", code or "")
         if not stu:
             return {"studentId": code}
+        class_ids = enrolled_class_ids(code or "")
         cls = db.find("classes", stu.get("classId") or "")
         course = db.find("courses", cls.get("courseId") or "") if cls else None
         teacher = db.find("teachers", cls.get("teacherId") or "") if cls else None
+        classes = [c for c in (db.find("classes", cid) for cid in class_ids) if c]
         payments = [p for p in db.alive("payments") if p.get("studentId") == code]
         paid = sum(float(p.get("amount") or 0) for p in payments if p.get("status") == "已支付")
         return {
@@ -100,16 +106,23 @@ class AccountContextService:
             "courseName": course["name"] if course else "",
             "teacherName": teacher["name"] if teacher else "",
             "schedule": cls.get("schedule") if cls else "",
+            "classNames": [c["name"] for c in classes],
+            "classCount": len(classes),
             "paidTotal": round(paid, 2), "paymentCount": len(payments),
             **TeachingStatsService().student(code or ""),
-            "nextSession": ScheduleService().next_session([stu.get("classId") or ""]),
+            "nextSession": ScheduleService().next_session(class_ids),
         }
 
     def _parent(self, user: dict) -> dict[str, Any]:
+        from app.services.enrollment import enrolled_class_ids
+
         code = user.get("refId")
         children = db.list_children_of(code or "")
         enriched = []
+        all_class_ids: list[str] = []
         for stu in children:
+            class_ids = enrolled_class_ids(stu["id"])
+            all_class_ids.extend(class_ids)
             cls = db.find("classes", stu.get("classId") or "")
             course = db.find("courses", cls.get("courseId") or "") if cls else None
             teacher = db.find("teachers", cls.get("teacherId") or "") if cls else None
@@ -119,9 +132,12 @@ class AccountContextService:
                 "className": cls["name"] if cls else "",
                 "courseName": course["name"] if course else "",
                 "teacherName": teacher["name"] if teacher else "",
+                "classNames": [
+                    c["name"] for c in (db.find("classes", cid) for cid in class_ids) if c
+                ],
             })
         return {"parentCode": code, "children": enriched, "childCount": len(enriched),
-                "nextSession": ScheduleService().next_session([c["classId"] for c in children if c.get("classId")])}
+                "nextSession": ScheduleService().next_session(all_class_ids)}
 
 
 class UserService(CrudService):
@@ -203,6 +219,27 @@ class TeacherService(CrudService):
 
     def list(self, *, subject: str | None = None, **kwargs) -> dict:
         return super().list(extra_filters={"subject": subject} if subject else None, **kwargs)
+
+    def decorate(self, row: dict) -> dict:
+        courses = [c for c in db.alive("courses") if c.get("teacherId") == row.get("id")]
+        return {
+            **row,
+            "courseCount": len(courses),
+            "courseNames": [c["name"] for c in courses],
+        }
+
+    def update(self, code: str, data: dict) -> dict:
+        if data.get("status") == "离职":
+            active = [
+                c for c in db.alive("classes")
+                if c.get("teacherId") == code and c.get("status") != "已结课"
+            ]
+            if active:
+                raise BizException(
+                    409,
+                    f"该教师仍负责 {len(active)} 个未结课班级，请先在班级管理中调整任教教师",
+                )
+        return super().update(code, data)
 
     def _before_delete(self, code: str) -> None:
         used = [c for c in db.alive("classes") if c.get("teacherId") == code]

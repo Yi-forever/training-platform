@@ -169,7 +169,10 @@ const BADGE_MAP = {
   '未提交': 'warning', '已提交': 'info', '已批改': 'success', '已退回': 'danger',
   '出勤': 'success', '迟到': 'warning', '请假': 'info', '缺勤': 'danger',
   '待上课': 'info', '已上课': 'success', '已完成': 'success', '已取消': 'gray', '已调课': 'warning', '待考勤': 'warning',
-  '待缴': 'warning', '部分缴': 'info', '已缴': 'success', '已逾期': 'danger'
+  '待缴': 'warning', '部分缴': 'info', '已缴': 'success', '已逾期': 'danger',
+  '待审核': 'warning', '已通过': 'success', '已驳回': 'danger', '已退课': 'gray', '候补': 'info',
+  '已撤回': 'gray'
+
 };
 function badge(text) { return `<span class="badge badge-${BADGE_MAP[text] || 'gray'}">${esc(text)}</span>`; }
 function emptyRow(cols, text = '暂无数据') {
@@ -214,6 +217,7 @@ const NAV_GROUPS = [
     { key: 'timetable', label: '课表',     icon: 'clock',    href: 'timetable.html' },
     { key: 'teachers', label: '教师管理', icon: 'teacher',  href: 'teachers.html' },
     { key: 'students', label: '学生管理', icon: 'student',  href: 'students.html' },
+    { key: 'enrollments', label: '选课管理', icon: 'userplus', href: 'enrollments.html' },
     { key: 'payments', label: '缴费管理', icon: 'wallet',   href: 'payments.html' }
   ]},
   { title: '内容管理', items: [
@@ -230,7 +234,7 @@ const PAGE_TITLES = {
   dashboard: '工作台', courses: '课程管理', classes: '班级管理', teachers: '教师管理',
   students: '学生管理', payments: '缴费管理', news: '新闻中心', resources: '课件资源',
   users: '用户管理', profile: '个人信息', settings: '系统设置', portal: '我的门户',
-  timetable: '课表'
+  timetable: '课表', enrollments: '选课管理'
 };
 
 /* 非员工（教师 / 学员 / 家长）专属导航：仅开放门户与可阅读的内容 */
@@ -248,7 +252,7 @@ const PORTAL_NAV_GROUPS = [
 ];
 
 /* 仅员工（后台）可见的页面：非员工访问会被重定向到门户 */
-const STAFF_PAGES = new Set(['dashboard', 'courses', 'classes', 'timetable', 'teachers', 'students', 'payments', 'users', 'settings']);
+const STAFF_PAGES = new Set(['dashboard', 'courses', 'classes', 'timetable', 'teachers', 'students', 'enrollments', 'payments', 'users', 'settings']);
 
 /* 仅超级管理员可见的页面：非管理员（含教务 / 财务 / 前台）访问会被重定向到工作台 */
 const ADMIN_PAGES = new Set(['users', 'settings']);

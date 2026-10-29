@@ -140,6 +140,26 @@ const api = {
     return request('POST', '/users/' + encodeURIComponent(username) + '/reset-password');
   },
 
+  /* 开课申请（教师提交 / 教务审核） */
+  teacherCourseProposals() {
+    return request('GET', '/portal/teacher/course-proposals');
+  },
+  applyCourseProposal(data) {
+    return request('POST', '/portal/teacher/course-proposals', data);
+  },
+  cancelCourseProposal(id) {
+    return request('DELETE', '/portal/teacher/course-proposals/' + encodeURIComponent(id));
+  },
+  courseProposals(params) {
+    return request('GET', '/course-proposals' + qs({ page: 1, pageSize: 100, ...params }));
+  },
+  courseProposalStats() {
+    return request('GET', '/course-proposals/stats');
+  },
+  reviewCourseProposal(id, action, note) {
+    return request('POST', '/course-proposals/' + encodeURIComponent(id) + '/review', { action, note });
+  },
+
   /* 缴费专用 */
   paymentStats() {
     return request('GET', '/payments/stats');
@@ -211,6 +231,48 @@ const api = {
     return request('GET', '/portal/parent/attendance' + qs({ studentId }));
   },
 
+
+  /* 选课（学员 / 家长 / 员工） */
+  catalog(studentId, params) {
+    return request('GET', '/enrollments/catalog' + qs({ studentId, ...params }));
+  },
+  myEnrollments() {
+    return request('GET', '/portal/student/enrollments');
+  },
+  applyEnrollment(data) {
+    return request('POST', '/portal/student/enrollments', data);
+  },
+  withdrawEnrollment(id) {
+    return request('DELETE', '/portal/student/enrollments/' + encodeURIComponent(id));
+  },
+  parentEnrollments(studentId) {
+    return request('GET', '/portal/parent/enrollments' + qs({ studentId }));
+  },
+  parentApplyEnrollment(data) {
+    return request('POST', '/portal/parent/enrollments', data);
+  },
+  parentWithdrawEnrollment(id) {
+    return request('DELETE', '/portal/parent/enrollments/' + encodeURIComponent(id));
+  },
+  enrollments(params) {
+    return request('GET', '/enrollments' + qs({ page: 1, pageSize: 100, ...params }));
+  },
+  enrollmentStats() {
+    return request('GET', '/enrollments/stats');
+  },
+  staffEnroll(data) {
+    return request('POST', '/enrollments', data);
+  },
+  reviewEnrollment(id, action, note) {
+    return request('POST', '/enrollments/' + encodeURIComponent(id) + '/review', { action, note });
+  },
+  staffWithdrawEnrollment(id) {
+    return request('DELETE', '/enrollments/' + encodeURIComponent(id));
+  },
+
+  
+
+
   /* 课表与课次（三端只读 + 教师选课次） */
   teacherTimetable(params) {
     return request('GET', '/portal/teacher/timetable' + qs(params));
@@ -228,7 +290,10 @@ const api = {
     return request('GET', '/portal/teacher/attendance/summary' + qs({ classId, month }));
   },
 
+  
+
   /* 员工课表：全部班级课次（周视图 / 维护主题与状态） */
+
   sessions(start, end, classId, teacherId) {
     return request('GET', '/sessions' + qs({ start, end, classId, teacherId }));
   },

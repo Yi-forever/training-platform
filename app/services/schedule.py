@@ -452,6 +452,7 @@ class ScheduleService:
         rec = db.update_fields("classSessions", session_id, fields, label="课次")
         return decorate_session(rec)
 
+
     def mark_completed(self, class_id: str, session_date: str) -> None:
         """考勤保存后，把对应课次标记为已上课（同班同日多个课次时只处理第一条待上课）。"""
         for session in db.alive("classSessions"):
@@ -464,6 +465,7 @@ class ScheduleService:
                     label="课次",
                 )
                 break
+
 
     def next_session(self, class_ids: list[str]) -> dict[str, Any] | None:
         ids = {code for code in class_ids if code}
@@ -681,16 +683,23 @@ class TimetableService:
         return self._payload(sessions, start, end)
 
     def for_student(self, student_code: str, date_from: str | None = None, date_to: str | None = None) -> dict[str, Any]:
+        from app.services.enrollment import enrolled_class_ids
+
         start, end = _range(date_from, date_to)
         student = db.locate("students", student_code or "", label="学员")
+        class_ids = set(enrolled_class_ids(student_code))
         sessions = [
             s for s in db.alive("classSessions")
-            if s.get("classId") == student.get("classId")
+            if s.get("classId") in class_ids
         ]
         payload = self._payload(sessions, start, end)
         payload["student"] = {
             "studentId": student["id"], "name": student.get("name"),
-            "classId": student.get("classId"), "className": (db.find("classes", student.get("classId") or "") or {}).get("name", ""),
+            "classId": student.get("classId"),
+            "className": (db.find("classes", student.get("classId") or "") or {}).get("name", ""),
+            "classNames": [
+                c["name"] for c in (db.find("classes", cid) for cid in class_ids) if c
+            ],
         }
         return payload
 

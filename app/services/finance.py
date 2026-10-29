@@ -69,30 +69,43 @@ class BillService(CrudService):
         }
         return super().create(payload)
 
-    def create_for_student(self, student: dict) -> dict | None:
-        """报名 / 存量补建：按「班级 → 课程价」生成一条应收账单（幂等）。"""
-        cls = db.find("classes", student.get("classId") or "")
+    def create_for_class(
+        self, student: dict, class_id: str, *, note: str | None = None, due_from: str | None = None
+    ) -> dict | None:
+        """按「班级 → 课程价」为某班级生成一条应收账单（同学员同班级幂等）。
+
+        选课系统支持一名学员兼报多个班级，因此幂等口径是「学员 + 班级」，
+        而不是「学员是否已有账单」。``due_from`` 用于新选课：账期与到期日按选课日期
+        计算，而不是学员最初报名日期。
+        """
+        cls = db.find("classes", class_id or "")
         course = db.find("courses", cls.get("courseId") or "") if cls else None
         if not cls or not course or _money(course.get("price")) <= 0:
             return None
         if any(
-            b.get("studentId") == student["id"] and b.get("status") != BILL_VOIDED
+            b.get("studentId") == student["id"]
+            and b.get("classId") == class_id
+            and b.get("status") != BILL_VOIDED
             for b in db.alive("bills")
         ):
             return None
-        enroll = student.get("enrollDate") or today()
+        base = due_from or student.get("enrollDate") or today()
         try:
-            due = (date.fromisoformat(enroll) + timedelta(days=14)).isoformat()
+            due = (date.fromisoformat(base) + timedelta(days=14)).isoformat()
         except ValueError:
             due = today()
         return self.create({
             "studentId": student["id"],
             "classId": cls["id"],
             "amount": course.get("price"),
-            "period": enroll[:7],
+            "period": base[:7],
             "dueDate": due,
-            "note": "报名学费（按课程价生成）",
+            "note": note or "报名学费（按课程价生成）",
         })
+
+    def create_for_student(self, student: dict) -> dict | None:
+        """报名 / 存量补建：按学员当前主班的课程价生成应收账单（幂等）。"""
+        return self.create_for_class(student, student.get("classId") or "")
 
     def decorate(self, row: dict) -> dict:
         amount = _money(row.get("amount"))

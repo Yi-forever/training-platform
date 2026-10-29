@@ -24,6 +24,8 @@ from app.db.models import (
     ClassSession,
     Config,
     Course,
+    CourseProposal,
+    Enrollment,
     News,
     Payment,
     Resource,
@@ -71,13 +73,13 @@ _TEACHERS: list[dict[str, Any]] = [
 ]
 
 _COURSES: list[dict[str, Any]] = [
-    {"id": "KC001", "name": "Scratch 趣味编程启蒙", "category": "Scratch", "level": "启蒙", "hours": 32, "price": 2400, "target": "6-9 岁，零基础", "status": "在售", "desc": "拖拽积木式编程，培养逻辑思维与创作兴趣，完成互动故事与小游戏作品。"},
-    {"id": "KC002", "name": "Python 零基础入门", "category": "Python", "level": "入门", "hours": 48, "price": 3600, "target": "10-15 岁，零基础", "status": "在售", "desc": "学习变量、循环、函数等基础语法，完成计算器、猜数字等小项目。"},
-    {"id": "KC003", "name": "Python 进阶与数据处理", "category": "Python", "level": "进阶", "hours": 60, "price": 4800, "target": "已完成 Python 入门", "status": "在售", "desc": "面向对象、文件处理、爬虫入门与数据可视化综合实战。"},
-    {"id": "KC004", "name": "C++ 信息学奥赛（CSP-J）", "category": "C++", "level": "竞赛", "hours": 72, "price": 6800, "target": "五年级以上，有编程基础", "status": "在售", "desc": "系统学习 C++ 语法、数据结构与算法，备战 CSP-J/S 入门级认证。"},
-    {"id": "KC005", "name": "人工智能启蒙（AI）", "category": "人工智能", "level": "启蒙", "hours": 36, "price": 3200, "target": "8-12 岁", "status": "在售", "desc": "认识机器学习基本概念，动手训练自己的图像识别小模型。"},
-    {"id": "KC006", "name": "Web 前端开发实战", "category": "Web", "level": "进阶", "hours": 56, "price": 5200, "target": "12 岁以上", "status": "在售", "desc": "HTML / CSS / JavaScript 全流程，独立开发个人网站与网页应用。"},
-    {"id": "KC007", "name": "机器人搭建与编程", "category": "机器人", "level": "入门", "hours": 40, "price": 3800, "target": "7-11 岁", "status": "在售", "desc": "机械结构搭建 + 图形化编程，锻炼动手能力与工程思维。"},
+    {"id": "KC001", "teacherId": "JS002", "name": "Scratch 趣味编程启蒙", "category": "Scratch", "level": "启蒙", "hours": 32, "price": 2400, "target": "6-9 岁，零基础", "status": "在售", "desc": "拖拽积木式编程，培养逻辑思维与创作兴趣，完成互动故事与小游戏作品。"},
+    {"id": "KC002", "teacherId": "JS001", "name": "Python 零基础入门", "category": "Python", "level": "入门", "hours": 48, "price": 3600, "target": "10-15 岁，零基础", "status": "在售", "desc": "学习变量、循环、函数等基础语法，完成计算器、猜数字等小项目。"},
+    {"id": "KC003", "teacherId": "JS001", "name": "Python 进阶与数据处理", "category": "Python", "level": "进阶", "hours": 60, "price": 4800, "target": "已完成 Python 入门", "status": "在售", "desc": "面向对象、文件处理、爬虫入门与数据可视化综合实战。"},
+    {"id": "KC004", "teacherId": "JS003", "name": "C++ 信息学奥赛（CSP-J）", "category": "C++", "level": "竞赛", "hours": 72, "price": 6800, "target": "五年级以上，有编程基础", "status": "在售", "desc": "系统学习 C++ 语法、数据结构与算法，备战 CSP-J/S 入门级认证。"},
+    {"id": "KC005", "teacherId": "JS004", "name": "人工智能启蒙（AI）", "category": "人工智能", "level": "启蒙", "hours": 36, "price": 3200, "target": "8-12 岁", "status": "在售", "desc": "认识机器学习基本概念，动手训练自己的图像识别小模型。"},
+    {"id": "KC006", "teacherId": "JS005", "name": "Web 前端开发实战", "category": "Web", "level": "进阶", "hours": 56, "price": 5200, "target": "12 岁以上", "status": "在售", "desc": "HTML / CSS / JavaScript 全流程，独立开发个人网站与网页应用。"},
+    {"id": "KC007", "teacherId": "JS006", "name": "机器人搭建与编程", "category": "机器人", "level": "入门", "hours": 40, "price": 3800, "target": "7-11 岁", "status": "在售", "desc": "机械结构搭建 + 图形化编程，锻炼动手能力与工程思维。"},
     {"id": "KC008", "name": "Java 计算思维养成", "category": "Java", "level": "入门", "hours": 48, "price": 4200, "target": "13 岁以上", "status": "停售", "desc": "面向对象编程思想训练，为后续深入学习打下基础。"},
 ]
 
@@ -169,6 +171,35 @@ def _stamp() -> str:
     return now_iso()
 
 
+def _at(day: str, hhmm: str = "10:00") -> str:
+    """构造与 now_iso 同格式的演示时间戳（用于选课记录排序）。"""
+    return f"{day}T{hhmm}:00+08:00"
+
+
+# 选课记录：存量学员的入班记录（已通过）+ 若干待审核 / 已驳回申请，供演示审核流程
+_ENROLLMENTS: list[dict[str, Any]] = [
+    *[
+        {"id": f"XK{idx:03d}", "studentId": st["id"], "classId": st["classId"], "status": "已通过",
+         "source": "员工", "note": "", "reviewNote": "历史报名补录", "reviewedBy": "admin",
+         "reviewedAt": _at(st["enrollDate"]), "waitlistNo": None, "createdAt": _at(st["enrollDate"])}
+        for idx, st in enumerate(_STUDENTS, start=1)
+    ],
+    {"id": "XK017", "studentId": "XS005", "classId": "BJ001", "status": "待审核",
+     "source": "学员", "note": "想同时学 Scratch 打基础", "reviewNote": None, "reviewedBy": None,
+     "reviewedAt": None, "waitlistNo": None, "createdAt": _at("2026-10-26", "20:15")},
+    {"id": "XK018", "studentId": "XS006", "classId": "BJ004", "status": "待审核",
+     "source": "家长", "note": "孩子想冲 CSP-J，麻烦老师评估", "reviewNote": None, "reviewedBy": None,
+     "reviewedAt": None, "waitlistNo": None, "createdAt": _at("2026-10-27", "09:40")},
+    {"id": "XK019", "studentId": "XS007", "classId": "BJ005", "status": "已驳回",
+     "source": "学员", "note": "", "reviewNote": "该班与现有 Python 班时间冲突，建议改报周六下午班",
+     "reviewedBy": "jiaowu", "reviewedAt": _at("2026-10-25", "15:20"), "waitlistNo": None,
+     "createdAt": _at("2026-10-24", "18:05")},
+    {"id": "XK020", "studentId": "XS010", "classId": "BJ005", "status": "待审核",
+     "source": "家长", "note": "对 AI 课程感兴趣", "reviewNote": None, "reviewedBy": None,
+     "reviewedAt": None, "waitlistNo": None, "createdAt": _at("2026-10-28", "11:30")},
+]
+
+
 # 作业（教师面向班级布置）
 _ASSIGNMENTS: list[dict[str, Any]] = [
     {"id": "HW001", "classId": "BJ002", "teacherId": "JS001", "title": "第 4 讲课后练习：循环与条件判断",
@@ -219,6 +250,27 @@ _ATTENDANCE: list[dict[str, Any]] = [
     {"id": "KQ011", "classId": "BJ003", "studentId": "XS011", "date": "2026-10-16", "status": "缺勤", "note": "学员休学中", "teacherId": "JS001"},
 ]
 
+
+# 教师开课申请（演示：待审核 2 条、已驳回 1 条）
+_COURSE_PROPOSALS: list[dict[str, Any]] = [
+    {"id": "KK001", "teacherId": "JS005", "name": "Web 前端进阶：Vue 3 实战", "category": "Web",
+     "level": "进阶", "hours": 48, "price": 5600, "target": "12 岁以上，已掌握 HTML/CSS/JS",
+     "desc": "以组件化思维完成一个完整的后台管理前端，涵盖 Vue 3、Pinia、路由与接口联调。",
+     "preferredSchedule": "周日 14:00-17:00", "status": "待审核", "reviewNote": None,
+     "reviewedBy": None, "reviewedAt": None, "courseId": None, "createdAt": _at("2026-10-27", "19:20")},
+    {"id": "KK002", "teacherId": "JS006", "name": "机器人竞赛集训（WRO）", "category": "机器人",
+     "level": "竞赛", "hours": 36, "price": 4800, "target": "9-13 岁，有机器人基础",
+     "desc": "围绕 WRO 常规赛任务开展结构搭建、巡线与任务编程集训，含两场模拟赛。",
+     "preferredSchedule": "周六 15:00-17:30", "status": "待审核", "reviewNote": None,
+     "reviewedBy": None, "reviewedAt": None, "courseId": None, "createdAt": _at("2026-10-28", "10:05")},
+    {"id": "KK003", "teacherId": "JS003", "name": "C++ 信奥冲刺（CSP-S）", "category": "C++",
+     "level": "竞赛", "hours": 60, "price": 7800, "target": "已通过 CSP-J 的学员",
+     "desc": "面向 CSP-S 提高级的高强度算法冲刺，覆盖图论、动态规划与真题精讲。",
+     "preferredSchedule": "周六 18:00-21:00", "status": "已驳回",
+     "reviewNote": "本学期 C++ 师资已排满，建议下学期再评估",
+     "reviewedBy": "jiaowu", "reviewedAt": _at("2026-10-25", "16:40"), "courseId": None,
+     "createdAt": _at("2026-10-24", "20:10")},
+]
 
 def _make_account(
     username: str,
@@ -380,4 +432,8 @@ def seed_db() -> None:
             s.add(Submission(**{**sub, "createdAt": ts, "updatedAt": ts}))
         for att in _ATTENDANCE:
             s.add(Attendance(**{**att, "createdAt": ts, "updatedAt": ts}))
+        for e in _ENROLLMENTS:
+            s.add(Enrollment(**{**e, "updatedAt": e["createdAt"]}))
+        for p in _COURSE_PROPOSALS:
+            s.add(CourseProposal(**{**p, "updatedAt": p["createdAt"]}))
         s.commit()

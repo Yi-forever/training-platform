@@ -53,6 +53,9 @@ function renderTable() {
       <td>${esc(t.phone)}</td>
       <td class="td-sub">${esc(t.email || '—')}</td>
       <td>${esc(t.subject)}</td>
+      <td class="td-sub">${t.courseCount
+        ? `<span title="${esc((t.courseNames || []).join('、'))}">${esc((t.courseNames || [])[0])}${t.courseCount > 1 ? ` 等 ${t.courseCount} 门` : ''}</span>`
+        : '—'}</td>
       <td>${esc(t.title)}</td>
       <td class="td-sub">${esc(t.hireDate)}</td>
       <td>${badge(t.status)}</td>
@@ -61,7 +64,7 @@ function renderTable() {
         <button class="btn-link" data-act="edit" data-id="${t.id}">${ICONS.edit}编辑</button>
         <button class="btn-link danger" data-act="del" data-id="${t.id}">${ICONS.trash}删除</button>` : ''}
       </td>
-    </tr>`).join('') : emptyRow(9, '没有符合条件的教师');
+    </tr>`).join('') : emptyRow(10, '没有符合条件的教师');
 }
 
 /* ---------- 行操作 ---------- */

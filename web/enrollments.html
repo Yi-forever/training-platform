@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>选课管理 - 启航编程管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+      <main class="content">
+        <div class="page-head">
+          <div class="page-head-main">
+            <h1>选课管理</h1>
+            <div class="sub">在线选课申请、名额审核、候补顺延与退课</div>
+          </div>
+        </div>
+
+        <div class="stat-grid" id="enroll-stats"></div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="toolbar">
+            <div class="search-box">
+              <span data-icon="search"></span>
+              <input class="input" id="kw" placeholder="搜索学员 / 班级 / 编号">
+            </div>
+            <select class="select" id="f-status">
+              <option value="">全部状态</option>
+              <option>待审核</option><option>候补</option><option>已通过</option>
+              <option>已驳回</option><option>已退课</option>
+            </select>
+            <select class="select" id="f-class">
+              <option value="">全部班级</option>
+            </select>
+            <div class="toolbar-spacer"></div>
+            <button class="btn" id="btn-enroll"><span data-icon="userplus"></span>代学员报名</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>学员</th><th>班级 / 课程</th><th>上课时间</th><th>来源</th>
+                  <th>申请时间</th><th>状态</th><th>审核意见</th><th style="width:170px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <span>共 <b id="count" style="color:var(--text)">0</b> 条选课记录</span>
+            <span>名额已满时自动进入候补，退课后按顺位转正</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 代报名 -->
+  <div class="modal" id="enroll-modal">
+    <div class="modal-mask" data-close></div>
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>代学员报名</h3>
+        <button class="modal-x" data-close><span data-icon="x"></span></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>学员<span class="req">*</span></label>
+            <select class="select" id="f-student"></select>
+          </div>
+          <div class="form-item">
+            <label>班级<span class="req">*</span></label>
+            <select class="select" id="f-enroll-class"></select>
+          </div>
+          <div class="form-item full">
+            <label>备注</label>
+            <input class="input" id="f-note" maxlength="100" placeholder="如：前台现场报名，学费待收">
+          </div>
+          <div class="form-item full">
+            <div class="td-sub" id="f-enroll-hint"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>取 消</button>
+        <button class="btn" id="btn-enroll-submit">确认入班</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 驳回 -->
+  <div class="modal" id="reject-modal">
+    <div class="modal-mask" data-close></div>
+    <div class="modal-box modal-sm">
+      <div class="modal-head">
+        <h3>驳回选课申请</h3>
+        <button class="modal-x" data-close><span data-icon="x"></span></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-item full">
+            <label>驳回原因</label>
+            <textarea class="input" id="f-review-note" rows="4" maxlength="200"
+              placeholder="如：该班与现有班级时间冲突，建议改报周六下午班"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>取 消</button>
+        <button class="btn btn-danger" id="btn-reject-submit">确认驳回</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/enrollments.js"></script>
+</body>
+</html>

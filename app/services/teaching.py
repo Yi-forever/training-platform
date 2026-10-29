@@ -14,6 +14,7 @@ import re
 from app.core.exceptions import BizException
 from app.db.repository import db
 from app.services.base import today
+from app.services.enrollment import enrolled_class_ids, enrolled_student_ids
 from app.services.schedule import ScheduleService
 
 ASSIGNMENT_STATUSES = ("进行中", "已结束")
@@ -55,7 +56,9 @@ def _check_session(teacher_code: str, class_id: str, session_id: str | None) -> 
 
 
 def _class_students(class_id: str) -> list[dict[str, Any]]:
-    return [s for s in db.alive("students") if s.get("classId") == class_id]
+    """班级在册学员（含兼报该班的学员，口径与选课记录一致）。"""
+    ids = enrolled_student_ids(class_id)
+    return [s for s in db.alive("students") if s["id"] in ids]
 
 
 def _student(student_code: str) -> dict[str, Any]:
@@ -193,8 +196,8 @@ class AssignmentService:
     # ---------- 学员 ----------
 
     def list_for_student(self, student_code: str) -> list[dict[str, Any]]:
-        stu = _student(student_code)
-        rows = [a for a in db.alive("assignments") if a.get("classId") == stu.get("classId")]
+        class_ids = set(enrolled_class_ids(student_code))
+        rows = [a for a in db.alive("assignments") if a.get("classId") in class_ids]
         result = []
         for a in _sort_assignments(rows):
             sub = db.find_one("submissions", assignmentId=a["id"], studentId=student_code)
@@ -219,9 +222,8 @@ class AssignmentService:
         return result
 
     def submit(self, student_code: str, assignment_id: str, content: str) -> dict[str, Any]:
-        stu = _student(student_code)
         assignment = db.locate("assignments", assignment_id or "", label="作业")
-        if assignment.get("classId") != stu.get("classId"):
+        if assignment.get("classId") not in set(enrolled_class_ids(student_code)):
             raise BizException(403, "该作业不属于你所在的班级")
         if assignment.get("status") != "进行中":
             raise BizException(409, "该作业已结束，无法提交")
@@ -306,7 +308,8 @@ class AssignmentService:
                 raise BizException(403, "该学员不在您的关联范围内")
         result = []
         for stu in children:
-            rows = [a for a in db.alive("assignments") if a.get("classId") == stu.get("classId")]
+            class_ids = set(enrolled_class_ids(stu["id"]))
+            rows = [a for a in db.alive("assignments") if a.get("classId") in class_ids]
             for a in _sort_assignments(rows):
                 sub = db.find_one("submissions", assignmentId=a["id"], studentId=stu["id"])
                 result.append({
@@ -519,9 +522,10 @@ class TeachingStatsService:
         stu = db.find("students", student_code or "")
         if not stu:
             return {"pendingAssignments": 0, "attendance": {s: 0 for s in ATTENDANCE_STATUSES}}
+        class_ids = set(enrolled_class_ids(student_code))
         assignments = [
             a for a in db.alive("assignments")
-            if a.get("classId") == stu.get("classId") and a.get("status") == "进行中"
+            if a.get("classId") in class_ids and a.get("status") == "进行中"
         ]
         submitted = {
             s.get("assignmentId") for s in db.alive("submissions")

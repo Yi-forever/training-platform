@@ -13,10 +13,17 @@ let USER = null;
 let CTX = null;
 let CLASSES = [];
 let ASSIGNMENTS = [];
+let TEACHER_PROPOSALS = [];
 let CHILDREN = [];
 let parentAssignments = [];
 let parentAttendance = [];
 let parentChildFilter = '';
+let studentCatalog = [];
+let studentEnrollments = [];
+let parentCatalog = [];
+let parentEnrollments = [];
+let parentEnrollChild = '';
+
 
 /* ---------- 课表状态与日期工具 ---------- */
 const TT = { start: null, sessions: [], seq: 0, title: '我的课表' };
@@ -81,13 +88,21 @@ function openPortalModal(title, bodyHtml, submitText, onSubmit) {
 
 async function initTeacher(el) {
   CLASSES = CTX.classes || [];
-  ASSIGNMENTS = await api.teacherAssignments();
+  const [assignments, proposals] = await Promise.all([
+    api.teacherAssignments(),
+    api.teacherCourseProposals().catch(() => []),
+  ]);
+  ASSIGNMENTS = assignments;
+  TEACHER_PROPOSALS = proposals || [];
   el.insertAdjacentHTML('beforeend', teacherStatsHtml());
   el.insertAdjacentHTML('beforeend', timetableHtml('我的课表'));
   el.insertAdjacentHTML('beforeend', teacherClassesHtml());
+  el.insertAdjacentHTML('beforeend', teacherProposalsHtml());
   el.insertAdjacentHTML('beforeend', teacherAssignmentsHtml());
   el.insertAdjacentHTML('beforeend', teacherAttendanceHtml());
 
+  $('#btn-new-proposal')?.addEventListener('click', openProposalForm);
+  $('#proposal-list')?.addEventListener('click', onProposalAction);
   $('#btn-new-assignment')?.addEventListener('click', () => openAssignmentEditor(null));
   $('#assignment-list')?.addEventListener('click', onAssignmentAction);
   $('#att-class')?.addEventListener('change', loadAttendance);
@@ -130,6 +145,126 @@ function teacherClassesHtml() {
         <tbody>${rows}</tbody>
       </table></div></div>
     </div>`;
+}
+
+function teacherProposalsHtml() {
+  return `
+    <div class="card reveal" data-d="2" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.filetext} 开课申请</div>
+        <button class="btn btn-sm" id="btn-new-proposal">${ICONS.plus} 申请开课</button>
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>课程名称</th><th>分类 / 级别</th><th>课时 / 学费</th><th>意向时间</th><th>状态</th><th>审核意见</th><th>操作</th></tr></thead>
+        <tbody id="proposal-list">${teacherProposalRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function teacherProposalRows() {
+  return TEACHER_PROPOSALS.map(p => `
+    <tr>
+      <td>
+        <div class="cell-main">${esc(p.name)}</div>
+        <div class="td-sub clamp-2">${esc(p.target || p.desc || '')}</div>
+      </td>
+      <td>${esc(p.category)}<div class="td-sub">${esc(p.level || '')}</div></td>
+      <td>${p.hours} 课时<div class="td-sub">${money(p.price)}</div></td>
+      <td class="td-sub">${esc(p.preferredSchedule || '待定')}</td>
+      <td>${badge(p.status)}${p.courseId ? `<div class="td-sub">${esc(p.courseId)}</div>` : ''}</td>
+      <td class="td-sub clamp-2">${esc(p.reviewNote || '—')}</td>
+      <td class="td-actions">
+        ${p.status === '待审核'
+          ? `<button class="btn-link danger" data-act="cancel" data-id="${p.id}">${ICONS.x}撤回</button>` : ''}
+      </td>
+    </tr>`).join('') || emptyRow(7, '还没有开课申请，可点击右上角「申请开课」');
+}
+
+async function reloadTeacherProposals() {
+  try {
+    TEACHER_PROPOSALS = await api.teacherCourseProposals();
+  } catch (e) {
+    TEACHER_PROPOSALS = [];
+  }
+  const tbody = $('#proposal-list');
+  if (tbody) tbody.innerHTML = teacherProposalRows();
+}
+
+function openProposalForm() {
+  const body = `
+    <div class="form-grid">
+      <div class="form-item full">
+        <label>课程名称<span class="req">*</span></label>
+        <input class="input" id="p-name" maxlength="64" placeholder="如：Web 前端进阶：Vue 3 实战">
+      </div>
+      <div class="form-item">
+        <label>课程分类<span class="req">*</span></label>
+        <select class="select" id="p-cat">
+          <option>Scratch</option><option>Python</option><option>C++</option>
+          <option>人工智能</option><option>Web</option><option>机器人</option><option>Java</option><option>其他</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>课程级别</label>
+        <select class="select" id="p-level">
+          <option>启蒙</option><option>入门</option><option selected>进阶</option><option>竞赛</option>
+        </select>
+      </div>
+      <div class="form-item">
+        <label>课时数<span class="req">*</span></label>
+        <input class="input" id="p-hours" type="number" min="1" max="999" placeholder="如：48">
+      </div>
+      <div class="form-item">
+        <label>建议学费（元）<span class="req">*</span></label>
+        <input class="input" id="p-price" type="number" min="0" placeholder="如：5600">
+      </div>
+      <div class="form-item full">
+        <label>适学对象</label>
+        <input class="input" id="p-target" maxlength="128" placeholder="如：12 岁以上，已掌握 HTML/CSS/JS">
+      </div>
+      <div class="form-item full">
+        <label>意向上课时间</label>
+        <input class="input" id="p-schedule" maxlength="128" placeholder="如：周日 14:00-17:00">
+      </div>
+      <div class="form-item full">
+        <label>课程简介</label>
+        <textarea class="input" id="p-desc" rows="4" placeholder="课程内容、教学目标与考核方式"></textarea>
+      </div>
+      <div class="form-item full">
+        <div class="td-sub">提交后由教务 / 超管审核；通过后自动创建课程，您将作为课程负责人。</div>
+      </div>
+    </div>`;
+  openPortalModal('申请开课', body, '提交申请', async () => {
+    const payload = {
+      name: $('#p-name').value.trim(),
+      category: $('#p-cat').value,
+      level: $('#p-level').value,
+      hours: Number($('#p-hours').value),
+      price: Number($('#p-price').value),
+      target: $('#p-target').value.trim(),
+      preferredSchedule: $('#p-schedule').value.trim(),
+      desc: $('#p-desc').value.trim(),
+    };
+    if (!payload.name) { showToast('请填写课程名称', 'error'); return false; }
+    if (!payload.hours || payload.hours <= 0) { showToast('请填写正确的课时数', 'error'); return false; }
+    if (Number.isNaN(payload.price) || payload.price < 0) { showToast('请填写正确的学费', 'error'); return false; }
+    const data = await apiOk(() => api.applyCourseProposal(payload));
+    if (!data) return false;
+    showToast('开课申请已提交，等待教务审核');
+    await reloadTeacherProposals();
+    return true;
+  });
+}
+
+function onProposalAction(e) {
+  const btn = e.target.closest('button[data-act="cancel"]');
+  if (!btn) return;
+  const p = TEACHER_PROPOSALS.find(x => x.id === btn.dataset.id);
+  if (!p) return;
+  askConfirm('撤回开课申请', `确定撤回「${p.name}」的开课申请吗？撤回后可重新提交。`, async () => {
+    if (!await apiOk(() => api.cancelCourseProposal(p.id), '申请已撤回')) return;
+    await reloadTeacherProposals();
+  });
 }
 
 function teacherAssignmentsHtml() {
@@ -500,20 +635,200 @@ function attSummaryChips(records) {
  * ============================================================ */
 
 async function initStudent(el) {
-  const [assignments, attendance] = await Promise.all([
+  const [assignments, attendance, catalog, enrollments] = await Promise.all([
     api.studentAssignments(),
     api.studentAttendance(),
+    api.catalog(),
+    api.myEnrollments(),
+
   ]);
+  studentCatalog = catalog;
+  studentEnrollments = enrollments;
   el.insertAdjacentHTML('beforeend', studentStatsHtml());
   el.insertAdjacentHTML('beforeend', studentInfoHtml());
   el.insertAdjacentHTML('beforeend', timetableHtml('我的课表'));
+  el.insertAdjacentHTML('beforeend', studentCatalogHtml());
+  el.insertAdjacentHTML('beforeend', studentEnrollmentsHtml());
+
   el.insertAdjacentHTML('beforeend', `<div id="student-pay" style="margin-top:16px">${payLoadingCard('缴费明细')}</div>`);
   el.insertAdjacentHTML('beforeend', studentAssignmentsHtml(assignments));
   el.insertAdjacentHTML('beforeend', studentAttendanceHtml(attendance));
   $('#student-assignments')?.addEventListener('click', onStudentAssignmentAction);
+  $('#student-catalog')?.addEventListener('click', onStudentCatalogAction);
+  $('#student-enrollments')?.addEventListener('click', onStudentEnrollmentAction);
+  $('#catalog-cat')?.addEventListener('change', renderStudentCatalog);
   window.__studentAssignments = assignments;
   await loadStudentPayments();
   await initTimetable('我的课表');
+}
+
+/* ---------- 学员：选课中心 / 我的选课 ---------- */
+
+function enrollSeatHtml(c) {
+  const pct = c.capacity ? Math.min(100, Math.round(c.enrolled / c.capacity * 100)) : 0;
+  return `<div style="min-width:110px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+      <span style="font-weight:600;${c.isFull ? 'color:var(--danger)' : ''}">余 ${c.remaining} 个</span>
+      <span class="td-sub">${c.enrolled}/${c.capacity}</span>
+    </div>
+    <div class="progress"><span style="width:${pct}%"></span></div>
+  </div>`;
+}
+
+function enrollStatusHtml(c) {
+  if (c.myStatus) {
+    const wait = c.myStatus === '候补' && c.waitlistNo ? ` <span class="td-sub">第 ${c.waitlistNo} 位</span>` : '';
+    return badge(c.myStatus) + wait;
+  }
+  if (c.conflictClassName) return '<span class="badge badge-warning">时间冲突</span>';
+  return '<span class="td-sub">可报名</span>';
+}
+
+function studentCatalogRows() {
+  const cat = $('#catalog-cat')?.value || '';
+  const list = cat ? studentCatalog.filter(c => c.category === cat) : studentCatalog;
+  return list.map(c => `
+    <tr>
+      <td>
+        <div class="cell-main">${esc(c.courseName)}</div>
+        <div class="td-sub">${esc(c.className)} · ${esc(c.level || '')}</div>
+      </td>
+      <td style="white-space:nowrap">${esc(c.teacherName || '—')}</td>
+      <td class="td-sub" style="white-space:nowrap">${esc(c.schedule || '排课待定')}<br>${esc(c.classroom || '')}</td>
+      <td>${enrollSeatHtml(c)}</td>
+      <td style="white-space:nowrap">${money(c.price)}<div class="td-sub">${c.hours} 课时</div></td>
+      <td>${enrollStatusHtml(c)}</td>
+      <td class="td-actions">
+        ${c.canApply
+          ? `<button class="btn-link" data-act="apply" data-id="${esc(c.classId)}">${ICONS.plus}${c.isFull ? '候补' : '选课'}</button>`
+          : (c.conflictClassName ? `<span class="td-sub">与「${esc(c.conflictClassName)}」冲突</span>` : '')}
+      </td>
+    </tr>`).join('') || emptyRow(7, '暂无可选班级');
+}
+
+function studentCatalogHtml() {
+  const cats = [...new Set(studentCatalog.map(c => c.category).filter(Boolean))];
+  return `
+    <div class="card reveal" data-d="3" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.userplus} 选课中心</div>
+        <select class="select" id="catalog-cat" style="width:180px">
+          <option value="">全部课程方向</option>
+          ${cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>课程 / 班级</th><th>教师</th><th>上课时间</th><th>剩余名额</th><th>学费</th><th>我的状态</th><th>操作</th></tr></thead>
+        <tbody id="student-catalog">${studentCatalogRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function studentEnrollmentRows() {
+  return studentEnrollments.map(e => `
+    <tr>
+      <td>
+        <div class="cell-main">${esc(e.className || '—')}</div>
+        <div class="td-sub">${esc(e.courseName || '')}</div>
+      </td>
+      <td class="td-sub" style="white-space:nowrap">${esc(e.schedule || '—')}</td>
+      <td>${badge(e.status)}${e.status === '候补' && e.waitlistNo ? ` <span class="td-sub">第 ${e.waitlistNo} 位</span>` : ''}</td>
+      <td class="td-sub" style="white-space:nowrap">${esc(String(e.createdAt || '').slice(0, 10))}</td>
+      <td class="td-sub clamp-2">${esc(e.reviewNote || '—')}</td>
+      <td class="td-actions">
+        ${['待审核', '候补', '已通过'].includes(e.status)
+          ? `<button class="btn-link danger" data-act="withdraw" data-id="${e.id}">${ICONS.x}退课</button>` : ''}
+      </td>
+    </tr>`).join('') || emptyRow(6, '还没有选课记录，可在上方选课中心申请');
+}
+
+function studentEnrollmentsHtml() {
+  return `
+    <div class="card reveal" data-d="3" style="margin-top:16px">
+      <div class="card-head"><div class="card-title">${ICONS.filetext} 我的选课</div></div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>班级</th><th>上课时间</th><th>状态</th><th>申请时间</th><th>审核意见</th><th>操作</th></tr></thead>
+        <tbody id="student-enrollments">${studentEnrollmentRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function renderStudentCatalog() {
+  const tbody = $('#student-catalog');
+  if (tbody) tbody.innerHTML = studentCatalogRows();
+}
+
+function renderStudentEnrollments() {
+  const tbody = $('#student-enrollments');
+  if (tbody) tbody.innerHTML = studentEnrollmentRows();
+}
+
+async function reloadStudentEnrollments() {
+  const [catalog, enrollments] = await Promise.all([api.catalog(), api.myEnrollments()]);
+  studentCatalog = catalog;
+  studentEnrollments = enrollments;
+  renderStudentCatalog();
+  renderStudentEnrollments();
+}
+
+function onStudentCatalogAction(e) {
+  const btn = e.target.closest('button[data-act="apply"]');
+  if (!btn) return;
+  const cls = studentCatalog.find(c => c.classId === btn.dataset.id);
+  if (!cls) return;
+  openApplyForm(cls, {
+    apply: note => api.applyEnrollment({ classId: cls.classId, note }),
+    after: reloadStudentEnrollments,
+  });
+}
+
+function onStudentEnrollmentAction(e) {
+  const btn = e.target.closest('button[data-act="withdraw"]');
+  if (!btn) return;
+  const row = studentEnrollments.find(x => x.id === btn.dataset.id);
+  if (!row) return;
+  askConfirm('退课确认',
+    `确定退出「${row.className}」吗？退课后该班名额将释放给候补学员。`,
+    async () => {
+      const data = await apiOk(() => api.withdrawEnrollment(row.id), '已退课');
+      if (!data) return;
+      await reloadStudentEnrollments();
+    });
+}
+
+/* 选课申请弹窗（学员 / 家长共用；payload 由调用方给出） */
+function openApplyForm(cls, extra) {
+  const body = `
+    <div class="form-grid">
+      <div class="form-item full">
+        <label>选课班级</label>
+        <div class="input" style="height:auto;background:var(--bg-soft)">
+          <b>${esc(cls.className)}</b>
+          <div class="td-sub">${esc(cls.courseName)} · ${esc(cls.teacherName || '教师待定')} · ${esc(cls.schedule || '排课待定')}</div>
+        </div>
+      </div>
+      <div class="form-item">
+        <label>学费</label>
+        <div style="font-size:20px;font-weight:600">${money(cls.price)}</div>
+      </div>
+      <div class="form-item">
+        <label>剩余名额</label>
+        <div style="font-size:20px;font-weight:600;${cls.isFull ? 'color:var(--danger)' : ''}">${cls.remaining} / ${cls.capacity}</div>
+      </div>
+      <div class="form-item full">
+        <label>备注（选填）</label>
+        <input class="input" id="en-note" maxlength="100" placeholder="如：希望老师多关注基础部分">
+      </div>
+      ${cls.isFull ? `<div class="form-item full"><div class="td-sub">该班名额已满，提交后将进入候补，名额释放时按顺位自动转正。</div></div>` : ''}
+    </div>`;
+  openPortalModal('提交选课申请', body, cls.isFull ? '加入候补' : '提交申请', async () => {
+    const note = $('#en-note').value.trim();
+    const data = await apiOk(() => extra.apply(note));
+    if (!data) return false;
+    showToast(data.message || '选课申请已提交');
+    if (extra.after) await extra.after();
+    return true;
+  });
 }
 
 function studentStatsHtml() {
@@ -537,10 +852,13 @@ function studentInfoHtml() {
       <div class="card-head"><div class="card-title">${ICONS.idcard} 我的学籍</div></div>
       <div class="card-body">
         <div class="kv-grid">
-          <div><span class="kv-k">班级</span><span class="kv-v">${esc(CTX.className || '–')}</span></div>
+          <div><span class="kv-k">班级</span><span class="kv-v">${esc(CTX.className || '待分班')}</span></div>
           <div><span class="kv-k">课程</span><span class="kv-v">${esc(CTX.courseName || '–')}</span></div>
           <div><span class="kv-k">带班教师</span><span class="kv-v">${esc(CTX.teacherName || '–')}</span></div>
           <div><span class="kv-k">上课时间</span><span class="kv-v">${esc(CTX.schedule || '–')}</span></div>
+          ${(CTX.classNames || []).length > 1
+            ? `<div><span class="kv-k">兼报班级</span><span class="kv-v">${esc(CTX.classNames.slice(1).join('、'))}</span></div>`
+            : ''}
         </div>
       </div>
     </div>`;
@@ -689,13 +1007,19 @@ async function loadStudentPayments() {
 
 async function initParent(el) {
   CHILDREN = CTX.children || [];
-  [parentAssignments, parentAttendance] = await Promise.all([
+  parentEnrollChild = CHILDREN.length ? CHILDREN[0].studentId : '';
+  [parentAssignments, parentAttendance, parentEnrollments, parentCatalog] = await Promise.all([
     api.parentAssignments(),
     api.parentAttendance(),
+    api.parentEnrollments(),
+    parentEnrollChild ? api.catalog(parentEnrollChild) : Promise.resolve([]),
   ]);
   el.insertAdjacentHTML('beforeend', parentStatsHtml());
   el.insertAdjacentHTML('beforeend', parentChildrenHtml());
+  el.insertAdjacentHTML('beforeend', parentEnrollCatalogHtml());
+  el.insertAdjacentHTML('beforeend', parentEnrollmentsHtml());
   el.insertAdjacentHTML('beforeend', timetableHtml('孩子课表'));
+
   el.insertAdjacentHTML('beforeend', parentPaymentsHtml());
   el.insertAdjacentHTML('beforeend', parentAssignmentsHtml());
   el.insertAdjacentHTML('beforeend', parentAttendanceHtml());
@@ -707,9 +1031,152 @@ async function initParent(el) {
     parentChildFilter = e.target.value;
     renderParentAttendance();
   });
+  $('#parent-enroll-filter')?.addEventListener('change', async e => {
+    parentEnrollChild = e.target.value;
+    await loadParentCatalog();
+  });
+  $('#parent-catalog')?.addEventListener('click', onParentCatalogAction);
+  $('#parent-enrollments')?.addEventListener('click', onParentEnrollmentAction);
   initParentPayments();
+
   await initTimetable('孩子课表');
+
 }
+
+/* ---------- 家长：孩子选课 ---------- */
+
+function parentEnrollCatalogRows() {
+  return parentCatalog.map(c => `
+    <tr>
+      <td>
+        <div class="cell-main">${esc(c.courseName)}</div>
+        <div class="td-sub">${esc(c.className)} · ${esc(c.level || '')}</div>
+      </td>
+      <td style="white-space:nowrap">${esc(c.teacherName || '—')}</td>
+      <td class="td-sub" style="white-space:nowrap">${esc(c.schedule || '排课待定')}<br>${esc(c.classroom || '')}</td>
+      <td>${enrollSeatHtml(c)}</td>
+      <td style="white-space:nowrap">${money(c.price)}<div class="td-sub">${c.hours} 课时</div></td>
+      <td>${enrollStatusHtml(c)}</td>
+      <td class="td-actions">
+        ${c.canApply
+          ? `<button class="btn-link" data-act="apply" data-id="${esc(c.classId)}">${ICONS.plus}${c.isFull ? '候补' : '为TA报名'}</button>`
+          : (c.conflictClassName ? `<span class="td-sub">与「${esc(c.conflictClassName)}」冲突</span>` : '')}
+      </td>
+    </tr>`).join('') || emptyRow(7, '暂无可选班级');
+}
+
+function parentEnrollCatalogHtml() {
+  const options = CHILDREN.map(c =>
+    `<option value="${esc(c.studentId)}" ${c.studentId === parentEnrollChild ? 'selected' : ''}>${esc(c.name)}</option>`
+  ).join('');
+  return `
+    <div class="card reveal" data-d="2" style="margin-top:16px">
+      <div class="card-head">
+        <div class="card-title">${ICONS.userplus} 孩子选课</div>
+        ${CHILDREN.length > 1
+          ? `<select class="select" id="parent-enroll-filter" style="width:180px">${options}</select>`
+          : `<div class="td-sub">${esc((CHILDREN[0] || {}).name || '')}</div>`}
+      </div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>课程 / 班级</th><th>教师</th><th>上课时间</th><th>剩余名额</th><th>学费</th><th>选课状态</th><th>操作</th></tr></thead>
+        <tbody id="parent-catalog">${parentEnrollCatalogRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function parentEnrollmentRows() {
+  return parentEnrollments.map(e => `
+    <tr>
+      <td>${esc(e.studentName || e.studentId)}</td>
+      <td>
+        <div class="cell-main">${esc(e.className || '—')}</div>
+        <div class="td-sub">${esc(e.courseName || '')}</div>
+      </td>
+      <td class="td-sub" style="white-space:nowrap">${esc(e.schedule || '—')}</td>
+      <td>${badge(e.status)}${e.status === '候补' && e.waitlistNo ? ` <span class="td-sub">第 ${e.waitlistNo} 位</span>` : ''}</td>
+      <td class="td-sub" style="white-space:nowrap">${esc(String(e.createdAt || '').slice(0, 10))}</td>
+      <td class="td-sub clamp-2">${esc(e.reviewNote || '—')}</td>
+      <td class="td-actions">
+        ${['待审核', '候补', '已通过'].includes(e.status)
+          ? `<button class="btn-link danger" data-act="withdraw" data-id="${e.id}">${ICONS.x}退课</button>` : ''}
+      </td>
+    </tr>`).join('') || emptyRow(7, '暂无选课记录');
+}
+
+function parentEnrollmentsHtml() {
+  return `
+    <div class="card reveal" data-d="3" style="margin-top:16px">
+      <div class="card-head"><div class="card-title">${ICONS.filetext} 选课记录</div></div>
+      <div class="card-body"><div class="table-wrap"><table>
+        <thead><tr><th>学员</th><th>班级</th><th>上课时间</th><th>状态</th><th>申请时间</th><th>审核意见</th><th>操作</th></tr></thead>
+        <tbody id="parent-enrollments">${parentEnrollmentRows()}</tbody>
+      </table></div></div>
+    </div>`;
+}
+
+function renderParentCatalog() {
+  const tbody = $('#parent-catalog');
+  if (tbody) tbody.innerHTML = parentEnrollCatalogRows();
+}
+
+function renderParentEnrollments() {
+  const tbody = $('#parent-enrollments');
+  if (tbody) tbody.innerHTML = parentEnrollmentRows();
+}
+
+async function loadParentCatalog() {
+  const tbody = $('#parent-catalog');
+  if (tbody) tbody.innerHTML = emptyRow(7, '加载中…');
+  try {
+    parentCatalog = parentEnrollChild ? await api.catalog(parentEnrollChild) : [];
+  } catch (e) {
+    showToast(e.message, 'error');
+    parentCatalog = [];
+  }
+  renderParentCatalog();
+}
+
+async function reloadParentEnrollments() {
+  const [enrollments, catalog] = await Promise.all([
+    api.parentEnrollments(),
+    parentEnrollChild ? api.catalog(parentEnrollChild) : Promise.resolve([]),
+  ]);
+  parentEnrollments = enrollments;
+  parentCatalog = catalog;
+  renderParentCatalog();
+  renderParentEnrollments();
+}
+
+function onParentCatalogAction(e) {
+  const btn = e.target.closest('button[data-act="apply"]');
+  if (!btn) return;
+  if (!parentEnrollChild) { showToast('请先选择学员', 'error'); return; }
+  const cls = parentCatalog.find(c => c.classId === btn.dataset.id);
+  if (!cls) return;
+  openApplyForm(cls, {
+    apply: note => api.parentApplyEnrollment({
+      studentId: parentEnrollChild,
+      classId: cls.classId,
+      note,
+    }),
+    after: reloadParentEnrollments,
+  });
+}
+
+function onParentEnrollmentAction(e) {
+  const btn = e.target.closest('button[data-act="withdraw"]');
+  if (!btn) return;
+  const row = parentEnrollments.find(x => x.id === btn.dataset.id);
+  if (!row) return;
+  askConfirm('退课确认',
+    `确定为「${row.studentName}」退出「${row.className}」吗？名额将释放给候补学员。`,
+    async () => {
+      const data = await apiOk(() => api.parentWithdrawEnrollment(row.id), '已退课');
+      if (!data) return;
+      await reloadParentEnrollments();
+    });
+}
+
 
 function parentStatsHtml() {
   const pending = parentAssignments.filter(a => a.assignmentStatus === '进行中'

@@ -92,6 +92,7 @@ class CourseCreate(CamelModel):
     price: float = Field(ge=0)
     target: str | None = None
     desc: str | None = None
+    teacher_id: str | None = None   # 负责 / 默认授课教师（可选）
     status: str = "在售"
 
 
@@ -103,7 +104,26 @@ class CourseUpdate(CamelModel):
     price: float | None = Field(default=None, ge=0)
     target: str | None = None
     desc: str | None = None
+    teacher_id: str | None = None
     status: str | None = None
+
+
+# ---------- 教师开课申请 ----------
+
+class CourseProposalCreate(CamelModel):
+    name: str = Field(min_length=1, max_length=64)
+    category: str
+    level: str = "入门"
+    hours: int = Field(gt=0, le=999)
+    price: float = Field(ge=0)
+    target: str | None = Field(default=None, max_length=128)
+    desc: str | None = Field(default=None, max_length=2000)
+    preferred_schedule: str | None = Field(default=None, max_length=128)
+
+
+class CourseProposalReview(CamelModel):
+    action: str = Field(pattern=r"^(approve|reject)$")
+    note: str | None = Field(default=None, max_length=200)
 
 
 # ---------- 班级 ----------
@@ -311,6 +331,30 @@ class SessionUpdate(CamelModel):
     topic: str | None = Field(default=None, max_length=128)
     status: str | None = None
     classroom: str | None = Field(default=None, max_length=32)
+
+
+# ---------- 选课 ----------
+
+class EnrollmentApply(CamelModel):
+    class_id: str
+    note: str | None = Field(default=None, max_length=200)
+
+
+class ParentEnrollmentApply(CamelModel):
+    student_id: str
+    class_id: str
+    note: str | None = Field(default=None, max_length=200)
+
+
+class StaffEnrollmentCreate(CamelModel):
+    student_id: str
+    class_id: str
+    note: str | None = Field(default=None, max_length=200)
+
+
+class EnrollmentReview(CamelModel):
+    action: str = Field(pattern=r"^(approve|reject)$")
+    note: str | None = Field(default=None, max_length=200)
 
 
 # ---------- 系统设置 ----------

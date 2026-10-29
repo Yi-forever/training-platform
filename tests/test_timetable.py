@@ -36,6 +36,9 @@ CRED = {
 
 @pytest.fixture(scope="module")
 def client():
+
+    # 只重置表结构，不删除库文件：engine 仍持有连接与 WAL，删文件会导致后续模块 disk I/O error
+
     init_db()
     reset_schema()
     seed_db()

@@ -4,16 +4,57 @@ from typing import Any
 from app.core.exceptions import BizException
 from app.db.repository import db
 from app.services.base import CrudService, today
+from app.services.enrollment import enrolled_count, enrolled_student_ids
 
 
 class CourseService(CrudService):
     coll = "courses"
     prefix = "KC"
     label = "课程"
-    search_fields = ("id", "name", "category", "level", "target")
+    search_fields = ("id", "name", "category", "level", "target", "teacherId")
 
     def list(self, *, category: str | None = None, level: str | None = None, **kwargs) -> dict:
         return super().list(extra_filters={"category": category, "level": level}, **kwargs)
+
+    def _match(self, row: dict, kw: str) -> bool:
+        if super()._match(row, kw):
+            return True
+        teacher = db.find("teachers", row.get("teacherId") or "")
+        return bool(teacher and kw in str(teacher.get("name") or "").lower())
+
+    def decorate(self, row: dict) -> dict:
+        teacher = db.find("teachers", row.get("teacherId") or "")
+        return {**row, "teacherName": teacher["name"] if teacher else ""}
+
+    def _validate_teacher(self, teacher_id: str | None) -> None:
+        if not teacher_id:
+            return
+        teacher = db.locate("teachers", teacher_id, label="授课教师")
+        if teacher.get("status") != "在职":
+            raise BizException(409, f"教师「{teacher['name']}」已离职，不能担任课程负责人")
+
+    def create(self, data: dict[str, Any]) -> dict:
+        data = {**data}
+        self._validate_teacher(data.get("teacherId"))
+        return super().create(data)
+
+    def update(self, code: str, data: dict[str, Any]) -> dict:
+        if "teacherId" in data:
+            self._validate_teacher(data.get("teacherId"))
+            if data.get("teacherId") is None:
+                # 显式清空负责人：CrudService 会过滤 None，这里单独落库
+                from app.core.config import now_iso
+
+                rest = {k: v for k, v in data.items() if k != "teacherId" and v is not None}
+                rec = db.update_fields(
+                    "courses", code,
+                    {"teacherId": None, "updatedAt": now_iso()},
+                    label=self.label,
+                )
+                if rest:
+                    rec = super().update(code, rest)
+                return self.decorate(rec)
+        return super().update(code, data)
 
     def _before_delete(self, code: str) -> None:
         used = [c for c in db.alive("classes") if c.get("courseId") == code]
@@ -32,7 +73,7 @@ class ClassService(CrudService):
         return super().list(extra_filters={"courseId": course_id, "teacherId": teacher_id}, **kwargs)
 
     def decorate(self, row: dict) -> dict:
-        enrolled = sum(1 for s in db.alive("students") if s.get("classId") == row.get("id"))
+        enrolled = enrolled_count(row.get("id") or "")
         course = db.find("courses", row.get("courseId") or "")
         teacher = db.find("teachers", row.get("teacherId") or "")
         return {
@@ -112,7 +153,7 @@ class ClassService(CrudService):
                 db.soft_delete("classSessions", session["id"], label="课次")
 
     def _before_delete(self, code: str) -> None:
-        students = [s for s in db.alive("students") if s.get("classId") == code]
+        students = enrolled_student_ids(code)
         if students:
             raise BizException(409, f"该班级仍有 {len(students)} 名学员，请先转移或移除学员")
 
@@ -127,8 +168,17 @@ class StudentService(CrudService):
         return super().list(extra_filters={"classId": class_id} if class_id else None, **kwargs)
 
     def decorate(self, row: dict) -> dict:
+        from app.services.enrollment import enrolled_class_ids
+
         cls = db.find("classes", row.get("classId") or "")
-        return {**row, "className": cls["name"] if cls else ""}
+        class_ids = enrolled_class_ids(row.get("id") or "")
+        names = [c["name"] for c in (db.find("classes", cid) for cid in class_ids) if c]
+        return {
+            **row,
+            "className": cls["name"] if cls else "",
+            "classNames": names,
+            "classCount": len(names),
+        }
 
     def create(self, data: dict[str, Any]) -> dict:
         cls = db.locate("classes", data.get("classId") or "", label="班级")
@@ -140,14 +190,57 @@ class StudentService(CrudService):
         if not data.get("status"):
             data["status"] = db.settings.get("newStudentStatus") or "在读"
         rec = super().create(data)
-        # 报名即生成应收账单（家长端「应缴」口径）；失败不阻断报名
+        # 报名即生成选课记录（已通过）与应收账单；失败不阻断报名
+        from app.services.enrollment import EnrollmentService
         from app.services.finance import BillService
 
+        try:
+            EnrollmentService().enroll_by_staff(
+                rec["id"], rec["classId"], "system", note="员工报名"
+            )
+        except BizException:
+            pass
         try:
             BillService().create_for_student(rec)
         except BizException:
             pass
         return rec
+
+    def update(self, code: str, data: dict[str, Any]) -> dict:
+        before = db.locate("students", code, label="学员")
+        rec = super().update(code, data)
+        new_class = data.get("classId")
+        if new_class and new_class != before.get("classId"):
+            self._transfer(code, before.get("classId") or "", new_class)
+        return rec
+
+    @staticmethod
+    def _transfer(code: str, old_class: str, new_class: str) -> None:
+        """员工调整学员班级：原班选课记录置为已退课，新班补一条已通过记录。"""
+        from app.services.enrollment import ACTIVE_STATUSES, EnrollmentService
+
+        ts = today()
+        for row in db.alive("enrollments"):
+            if (
+                row.get("studentId") == code
+                and row.get("classId") == old_class
+                and row.get("status") in ACTIVE_STATUSES
+            ):
+                db.update_fields(
+                    "enrollments", row["id"],
+                    {
+                        "status": "已退课",
+                        "waitlistNo": None,
+                        "reviewNote": "员工调整班级",
+                        "reviewedAt": ts,
+                        "updatedAt": ts,
+                    },
+                    label="选课记录",
+                )
+        try:
+            EnrollmentService().enroll_by_staff(code, new_class, "system", note="员工调整班级")
+        except BizException:
+            pass
 
     def delete(self, code: str) -> None:
         """删除学员并级联软删其全部缴费记录（同一数据库事务内完成）。"""

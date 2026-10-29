@@ -93,6 +93,7 @@ def _ensure_columns() -> None:
 
     added: dict[str, dict[str, str]] = {
         "payments": {"billId": "VARCHAR(16)"},
+        "courses": {"teacherId": "VARCHAR(16)"},
         "assignments": {
             "sessionId": "VARCHAR(16)",
             "allowLate": "BOOLEAN NOT NULL DEFAULT 0",

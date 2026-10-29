@@ -15,7 +15,7 @@
         <div class="page-head">
           <div class="page-head-main">
             <h1>课程管理</h1>
-            <div class="sub">上架课程与定价，支持在售与停售</div>
+            <div class="sub">上架课程与定价、指定授课教师，审核教师开课申请</div>
           </div>
         </div>
         <div class="card">
@@ -40,7 +40,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>课程编号</th><th>课程名称</th><th>分类</th><th>级别</th>
+                  <th>课程编号</th><th>课程名称</th><th>授课教师</th><th>分类</th><th>级别</th>
                   <th>课时</th><th>学费</th><th>状态</th><th style="width:200px">操作</th>
                 </tr>
               </thead>
@@ -50,6 +50,30 @@
           <div class="table-foot">
             <span>共 <b id="count" style="color:var(--text)">0</b> 门课程</span>
             <span>演示数据 · 修改保存在浏览器本地</span>
+          </div>
+        </div>
+        <div class="card" id="proposal-card" style="margin-top:16px;display:none">
+          <div class="card-head">
+            <div class="card-title"><span data-icon="filetext"></span> 开课申请</div>
+            <select class="select" id="p-status" style="width:140px">
+              <option value="">全部状态</option>
+              <option>待审核</option><option>已通过</option><option>已驳回</option><option>已撤回</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>教师</th><th>课程名称</th><th>分类 / 级别</th><th>课时 / 学费</th>
+                  <th>意向时间</th><th>提交时间</th><th>状态</th><th>审核意见</th><th style="width:150px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="proposal-body"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <span>待审核 <b id="proposal-pending" style="color:var(--text)">0</b> 条</span>
+            <span>通过后自动创建课程，课程负责人为申请教师</span>
           </div>
         </div>
       </main>
@@ -75,6 +99,12 @@
             <select class="select" id="f-cat">
               <option>Scratch</option><option>Python</option><option>C++</option>
               <option>人工智能</option><option>Web</option><option>机器人</option><option>Java</option><option>其他</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>授课教师</label>
+            <select class="select" id="f-teacher">
+              <option value="">暂不指定</option>
             </select>
           </div>
           <div class="form-item">
@@ -110,6 +140,30 @@
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close>取 消</button>
         <button class="btn" id="btn-submit">保 存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 驳回开课申请 -->
+  <div class="modal" id="reject-modal">
+    <div class="modal-mask" data-close></div>
+    <div class="modal-box modal-sm">
+      <div class="modal-head">
+        <h3>驳回开课申请</h3>
+        <button class="modal-x" data-close><span data-icon="x"></span></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-item full">
+            <label>驳回原因</label>
+            <textarea class="input" id="p-note" rows="4" maxlength="200"
+              placeholder="如：本学期该方向师资已排满，建议下学期再提交"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>取 消</button>
+        <button class="btn btn-danger" id="btn-reject">确认驳回</button>
       </div>
     </div>
   </div>
